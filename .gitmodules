@@ -1,0 +1,6 @@
+[submodule "backend"]
+	path = backend
+	url = https://github.com/stainer1998/vf-admin-backend.git
+[submodule "frontend"]
+	path = frontend
+	url = https://github.com/stainer1998/vf-admin-frontend.git
