@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-CRM-ERP for VF Digital Solutions, a computer repair workshop. API-first Django backend + React/Vite frontend. Integrates with two sister projects: `vf-lookout` (hardware diagnostics tool) and `vf-hometracker` (separate React app whose stack informs this one).
+CRM-ERP for VF Digital Solutions, a computer repair workshop. API-first Django backend + React/Vite frontend. Integrates with `vf-hometracker` (sister React app whose stack informs this one) and includes `vf-lookout` (hardware diagnostics CLI tool) as a submodule at `lookout/`.
 
 ## Services
 

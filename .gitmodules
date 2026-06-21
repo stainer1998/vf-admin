@@ -4,3 +4,6 @@
 [submodule "frontend"]
 	path = frontend
 	url = git@github.com:stainer1998/vf-admin-frontend.git
+[submodule "lookout"]
+	path = lookout
+	url = git@github.com:stainer1998/vf-lookout.git
