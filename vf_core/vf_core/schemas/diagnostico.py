@@ -1,49 +1,47 @@
 from __future__ import annotations
-from typing import Any, Optional
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
-class CampoManual(BaseModel):
-    valor: str
-    fuente: str = "manual"
+class DiscoSchema(BaseModel):
+    categoria: str = Field(description="DISCO_INTERNO | LECTOR_OPTICO")
+    tipo: Optional[str] = None
+    interfaz: Optional[str] = None
+    capacidad: Optional[str] = None
+    modelo_crudo: Optional[str] = None
+
+
+class EspecificacionSchema(BaseModel):
+    so: Optional[str] = Field(None, description="Sistema operativo")
+    so_version: Optional[str] = None
+    cpu_modelo: Optional[str] = None
+    ram_total_gb: Optional[float] = None
+    gpu_modelo: Optional[str] = None
+    discos: list[DiscoSchema] = Field(default_factory=list)
 
 
 class ClienteSchema(BaseModel):
-    tipo: str = "persona"
-    nombre: CampoManual
-    primer_apellido: CampoManual
-    segundo_apellido: Optional[CampoManual] = None
-    telefono: Optional[CampoManual] = None
+    nombre: str
+    primer_apellido: str
+    segundo_apellido: Optional[str] = None
+    telefono: Optional[str] = None
     email: Optional[str] = None
     rut: Optional[str] = None
-    razon_social: Optional[str] = None
-    direccion: Optional[str] = None
-    observaciones: Optional[str] = None
+    tipo: str = "PERSONA"
 
 
-class EquipoMarcaSchema(BaseModel):
+class EquipoSchema(BaseModel):
     tipo: str
-    marca: CampoManual
-    modelo: CampoManual
-    numero_serie: Optional[CampoManual] = None
-    ano: Optional[CampoManual] = None
-
-
-class EquipoEnsambladoSchema(BaseModel):
-    tipo: str = "desktop_ensamblado"
-    identificador: Optional[CampoManual] = None
-    placa_madre: Optional[CampoManual] = None
-    fuente: Optional[CampoManual] = None
-    gabinete: Optional[CampoManual] = None
+    marca: str
+    modelo: str
+    numero_serie: Optional[str] = None
+    anio: Optional[int] = None
 
 
 class DiagnosticoLookout(BaseModel):
     version_schema: str = Field(description="Versión del schema de exportación de Lookout")
-    herramienta: str = "lookout-cli"
-    timestamp_inicio: str = Field(description="ISO 8601")
-    timestamp_fin: Optional[str] = None
-    tiene_permisos_admin: bool = False
+    timestamp: str = Field(description="ISO 8601")
+    archivo_origen: Optional[str] = None
     cliente: ClienteSchema
-    equipo: dict[str, Any]
-    specs: dict[str, Any] = Field(default_factory=dict)
-    metadata_deteccion: Optional[dict[str, Any]] = None
+    equipo: EquipoSchema
+    especificaciones: EspecificacionSchema
