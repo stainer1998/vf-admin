@@ -1,0 +1,91 @@
+name: Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build & push API
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/stainer1998/vf-admin-api:latest
+            ghcr.io/stainer1998/vf-admin-api:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: frontend/Dockerfile.prod
+          push: true
+          build-args: VITE_API_URL=/
+          tags: |
+            ghcr.io/stainer1998/vf-admin-frontend:latest
+            ghcr.io/stainer1998/vf-admin-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & push Nginx
+        uses: docker/build-push-action@v5
+        with:
+          context: ./nginx
+          file: nginx/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/stainer1998/vf-admin-nginx:latest
+            ghcr.io/stainer1998/vf-admin-nginx:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Portainer redeploy
+        env:
+          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
+          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+        run: |
+          STACK=$(curl -sf \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks" | \
+            jq '.[] | select(.Name == "vf-admin")')
+
+          STACK_ID=$(echo "$STACK" | jq -r '.Id')
+          ENDPOINT_ID=$(echo "$STACK" | jq -r '.EndpointId')
+
+          STACK_FILE=$(curl -sf \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID/file" | \
+            jq -r '.StackFileContent')
+
+          curl -sf -X PUT \
+            -H "X-API-Key: $PORTAINER_API_KEY" \
+            -H "Content-Type: application/json" \
+            "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" \
+            -d "$(jq -n --arg sf "$STACK_FILE" \
+              '{StackFileContent: $sf, pullImage: true, prune: false}')"
