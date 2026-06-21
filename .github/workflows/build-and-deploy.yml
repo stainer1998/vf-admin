@@ -65,27 +65,16 @@ jobs:
     needs: build-and-push
     runs-on: self-hosted
     steps:
-      - name: Trigger Portainer redeploy
-        env:
-          PORTAINER_URL: ${{ secrets.PORTAINER_URL }}
-          PORTAINER_API_KEY: ${{ secrets.PORTAINER_API_KEY }}
+      - uses: actions/checkout@v4
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GH_PAT }}
+
+      - name: Deploy with docker compose
         run: |
-          STACK=$(curl -sf \
-            -H "X-API-Key: $PORTAINER_API_KEY" \
-            "$PORTAINER_URL/api/stacks" | \
-            jq '.[] | select(.Name == "vf-admin")')
-
-          STACK_ID=$(echo "$STACK" | jq -r '.Id')
-          ENDPOINT_ID=$(echo "$STACK" | jq -r '.EndpointId')
-
-          STACK_FILE=$(curl -sf \
-            -H "X-API-Key: $PORTAINER_API_KEY" \
-            "$PORTAINER_URL/api/stacks/$STACK_ID/file" | \
-            jq -r '.StackFileContent')
-
-          curl -sf -X PUT \
-            -H "X-API-Key: $PORTAINER_API_KEY" \
-            -H "Content-Type: application/json" \
-            "$PORTAINER_URL/api/stacks/$STACK_ID?endpointId=$ENDPOINT_ID" \
-            -d "$(jq -n --arg sf "$STACK_FILE" \
-              '{StackFileContent: $sf, pullImage: true, prune: false}')"
+          docker compose -f docker-compose.prod.yml --env-file /opt/vf-admin/.env.prod pull
+          docker compose -f docker-compose.prod.yml --env-file /opt/vf-admin/.env.prod up -d
