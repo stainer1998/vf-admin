@@ -7,3 +7,6 @@
 [submodule "lookout"]
 	path = lookout
 	url = git@github.com:stainer1998/vf-lookout.git
+[submodule "mobile"]
+	path = mobile
+	url = git@github.com:stainer1998/vf-admin-mobile.git
