@@ -29,6 +29,10 @@ DJANGO_SETTINGS_MODULE=config.settings.dev ../.venv/bin/python manage.py check
 
 # Inside Docker
 docker compose run --rm api python manage.py <command>
+
+# Tests (Django's built-in runner, no pytest)
+docker compose run --rm api python manage.py test
+docker compose run --rm api python manage.py test inventario.tests  # single app
 ```
 
 `manage.py` defaults to `config.settings.dev`; prod uses `config.settings.prod`.
@@ -60,10 +64,11 @@ Every Django app follows the same layout: `models.py`, `serializers.py`, `views.
 | `equipos` | `Equipment` — owned by Client, `identity_key` via serial or hash(brand+model) |
 | `diagnosticos` | `Diagnosis` (raw_json + content_hash dedup) + `DetectedSpecification` + `StorageDevice` + `ManualCorrection` |
 | `catalogo` | `Service` catalog with snapshot pricing |
-| `inventario` | `Product`, `ProductCategory`, `Supplier`, `MovimientoInventario` (stock derived from movements) |
+| `inventario` | `Product`, `ProductCategory`, `Supplier`, `Brand`, `ProductSupplier`, `InventoryMovement` (stock derived from movements) |
 | `cotizaciones` | `Quote` with polymorphic `QuoteLine` (service XOR product, snapshot prices) |
 | `trabajos` | `WorkOrder` + `WorkOrderLine` — spine of the system; triggers inventory SALIDA and financial INGRESO |
-| `finanzas` | `FinancialTransaction` (neutral ledger) → `Allocation` → `AllocationDetail` per fund → `FundMovement` (fund balances) |
+| `finanzas` | `FinancialTransaction` (neutral ledger) → `Allocation` → `AllocationDetail` per fund → `FundMovement` (fund balances); also `GastoRecurrente`, `GastoPendiente`, `AlertaFinanciera`, `ExpenseCategory` |
+| `calculadora` | Pricing calculator — `ParametrosCalculadora` (singleton), calculates service prices from cost-per-hour + overheads, saves results to `catalogo.Service` |
 | `usuarios` | `UsuarioVF(AbstractUser)` with `rol` (ADMIN/TECNICO/VENDEDOR) |
 
 ### Key patterns
@@ -79,6 +84,14 @@ Every Django app follows the same layout: `models.py`, `serializers.py`, `views.
 **Number generation**: `WorkOrder` and `Quote` auto-generate correlative numbers (`OT-YYYY-NNNN`, `COT-YYYY-NNNN`) in `save()` when blank.
 
 **List vs detail serializers**: Several apps define `*ListSerializer` (flat fields, read-only) and `*Serializer` (full with nested writes). Views switch via `get_serializer_class()` checking `self.action == "list"`.
+
+**Cross-app signals**: Automation between apps is done via `post_save` signals, never by importing across apps directly in model/view code. Each app that fires signals registers them in `apps.py → ready()`. Current signals:
+- `trabajos/signals.py` — `WorkOrder` PAID → `FinancialTransaction(INCOME)` + fund allocation
+- `inventario/signals.py` — `InventoryMovement` ENTRY → `FinancialTransaction(EXPENSE)`
+
+Always import the target app's models inside the signal function body (lazy import) to avoid circular imports.
+
+**Stock**: `Product.stock` is a computed `@property` — a `Sum` over `InventoryMovement` with `ENTRY` adding, `EXIT` subtracting, `ADJUSTMENT` adding signed quantity. There is no stored stock counter.
 
 ### Auth endpoints
 
@@ -98,15 +111,29 @@ Shared Python package at `vf_core/` (repo root), installed as editable in both D
 
 ## Frontend (React + Vite)
 
-`frontend/` — currently bootstrapping. Stack: React + TypeScript + Vite, port 5173.
-
 ```bash
 cd frontend
 npm install
-npm run dev
+npm run dev          # dev server on :5173
+npx tsc --noEmit     # type check (no lint script configured)
+npm run build        # tsc + vite build
 ```
 
-`VITE_API_URL` env var points at the backend (default `http://localhost:8000`).
+`@/` resolves to `frontend/src/` (configured in `vite.config.ts`). The Vite dev server proxies `/api/*` to `http://localhost:8000` (or `VITE_API_PROXY_TARGET`).
+
+### Frontend architecture
+
+**Routing**: All routes except `/login` are wrapped in `ProtectedRoute` → `AppLayout` (sidebar + `<Outlet>`). Routes are defined in `src/App.tsx`. Adding a new page requires: create `src/pages/<module>/<Page>.tsx`, add a `<Route>` in `App.tsx`, add a `NavLink` entry in `src/components/layout/Sidebar.tsx`.
+
+**API layer**: One `apiClient` (axios instance) at `src/lib/axios.ts`. It auto-attaches the JWT bearer token and handles silent refresh on 401 (queue-based). All modules expose a `*Service` object in `src/services/` that wraps `apiClient` calls. Never call `apiClient` directly from components.
+
+**State**: Auth state (tokens + user) lives in `useAuthStore` (Zustand + `persist` to localStorage) at `src/store/auth.ts`. Server state is managed by React Query (`@tanstack/react-query`) — use `useQuery` / `useMutation` with descriptive `queryKey` arrays. After a mutation that changes list data, call `qc.invalidateQueries({ queryKey: [...] })`.
+
+**Forms**: React Hook Form + Zod (`zodResolver`). Use `z.coerce.number()` for numeric inputs (they arrive as strings from `<input>`). For optional nullable FK selects, use `z.preprocess((v) => (v === '' || v == null ? null : Number(v)), z.number().nullable())`.
+
+**Styling**: Tailwind CSS. Conditional classes via `cn()` from `src/lib/utils.ts` (clsx + tailwind-merge). Brand colors: `bg-brand-navy` for sidebar. Active nav links use `bg-amber-600`.
+
+**Types**: All shared TypeScript interfaces live in `src/types/index.ts`. Paginated list responses use `PaginatedResponse<T>` from that file.
 
 ## Dockerfile note
 
