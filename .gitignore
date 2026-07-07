@@ -30,3 +30,6 @@ mobile/dist/
 # OS
 .DS_Store
 Thumbs.db
+
+# Documentos de referencia locales
+referencias/
